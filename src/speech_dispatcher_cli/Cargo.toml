@@ -1,0 +1,14 @@
+[package]
+name = "speech_dispatcher_cli"
+license = "GPL"
+version = "0.1.0"
+authors = ["Rastislav Kiss rastislav.kish@gmail.com"]
+edition = "2018"
+description = "A small utility to test speech dispatcher from command line."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+speech-dispatcher="0.4.3"
+

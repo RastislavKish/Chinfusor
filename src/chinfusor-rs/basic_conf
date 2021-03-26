@@ -1,0 +1,12 @@
+INIT
+AUDIO
+audio_output_method=pulse
+audio_oss_device=/dev/dsp
+audio_alsa_device=default
+audio_nas_server=tcp/localhost:5450
+audio_pulse_server=default
+audio_pulse_min_length=100
+.
+LOGLEVEL
+log_level=3
+.

@@ -1,0 +1,6 @@
+[workspace]
+members=[
+"chinfusor",
+"text_processor",
+]
+

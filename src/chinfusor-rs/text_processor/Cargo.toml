@@ -1,0 +1,12 @@
+[package]
+name = "text_processor"
+license = "MIT"
+version = "0.1.0"
+authors = ["Rastislav Kiss rastislav.kish@gmail.com"]
+edition = "2018"
+description = "A crate splitting strings to parts written in various alphabets."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+

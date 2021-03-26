@@ -1,0 +1,5 @@
+alphabet,module,arg,language,voice,punctuation_mode,pitch,capitals_pitch,rate,volume,firejailed
+latin,/usr/lib/speech-dispatcher-modules/sd_espeak-ng,/etc/speech-dispatcher/modules/espeak-ng,en,male1,some,10,50,2,100,no
+chinese,/usr/lib/speech-dispatcher-modules/sd_espeak-ng,/etc/speech-dispatcher/modules/espeak-ng,cmn,male1,some,10,50,2,100,no
+cyrillic,/usr/lib/speech-dispatcher-modules/sd_espeak-ng,/etc/speech-dispatcher/modules/espeak-ng,ru,male1,some,10,50,2,100,no
+
