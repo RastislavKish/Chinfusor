@@ -50,6 +50,8 @@ settings.conf is a configuration file with simple structure, each line starts wi
 
 Currently, just one configuration is available in this file, punctuation_characters. It specifies the characters considered as punctuation while parsing text. \\n and \\r characters are added automatically by chinfusor, characters escaping is not supported.
 
+Since version 1.2, Chinfusor tracks its documentation files, if they're present on its startup. Any changes made in them will be reflected immediately, without a need to restart the current session.
+
 ### Installing Chinfusor
 
 Installation of Chinfusor consists of two parts, getting Chinfusor's binary and moving it to the necessary place.

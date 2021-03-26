@@ -2,7 +2,13 @@
 
 This is a changelog for Chinfusor and related programs.
 
-## Version 1.1
+## Chinfusor 1.2
+
+* Added a tracker of configuration files, if present. Any changes in the configuration will be reflected immediately, without a need to restart the current session.
+* Fixed a bug in parsing ssml tags, which was causing words in foreign languages separated by spaces and marked by Orca to be read individually with respective pronounciation problems.
+* Updated documentation.
+
+## Chinfusor 1.1
 
 * settings.csv is now called alphabets_settings.csv and instead of configuring alphabets, it defines them. Format is the same as in previous version, just with added unicode_ranges column, which is described in more detayl in documentation. User can define as many alphabets as he / she wishes, without any direct or indirect limitations.
 * settings.conf, now contains general settings of Chinfusor.
@@ -13,7 +19,7 @@ This is a changelog for Chinfusor and related programs.
 * Fixed two bugs related to processing KEY requests, which as I found were capable of freezing Chinfusor. It was an interesting finding, as I thought, that Orca uses these, but that's obviously not the case. Anyway, the function is now stabilized and safe.
 * Updated documentation, especially the configuration section, a section about updating Chinfusor was added and few other places were edited to reflect current state of the program.
 
-## 1.0
+## Chinfusor 1.0
 
 The first release.
 

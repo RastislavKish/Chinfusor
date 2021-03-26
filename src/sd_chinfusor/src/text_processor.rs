@@ -42,7 +42,13 @@ pub fn parse_text(text: &str, alphabets_scheme: &Vec<u32>, punctuation_character
         };
 
     let mut last_mark=0;
-    let mut current_chunk_type=get_alphabet_id(chars[0] as u32);
+    let mut chunk_type_set=false;
+    let mut current_chunk_type=if ssml && chars[0]=='<' {
+        0
+        } else {
+        chunk_type_set=true;
+        get_alphabet_id(chars[0] as u32)
+        };
     let mut in_tag=false;
 
     for (i, ch) in chars.iter().enumerate() {
@@ -52,6 +58,7 @@ pub fn parse_text(text: &str, alphabets_scheme: &Vec<u32>, punctuation_character
                 }
             if *ch=='>' && in_tag {
                 in_tag=false;
+                continue;
                 }
 
             if in_tag {
@@ -60,6 +67,12 @@ pub fn parse_text(text: &str, alphabets_scheme: &Vec<u32>, punctuation_character
             }
 
         if punctuation_characters.contains(ch) {
+            continue;
+            }
+
+        if !chunk_type_set {
+            current_chunk_type=get_alphabet_id(*ch as u32);
+            chunk_type_set=true;
             continue;
             }
 

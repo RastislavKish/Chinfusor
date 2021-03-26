@@ -9,6 +9,8 @@ use std::thread;
 
 #[macro_use]
 extern crate lazy_static;
+use notify::Config as NotifyConfig;
+use notify::{event::EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use regex::Regex;
 use subprocess::{Exec, Popen, Redirection};
 use text_processor::LanguageChunk;
@@ -464,13 +466,15 @@ impl SpeechEngineConfiguration {
         }
     }
 
-pub fn run(config: Config) {
+pub fn run(mut config: Config) {
     let mut engines=Vec::new();
     for engine in &config.engines {
         engines.push(Process::new(&engine.module, &engine.arg, engine.firejailed));
         }
 
-    let alphabets_scheme=config.generate_alphabets_scheme();
+    let mut alphabets_scheme=config.generate_alphabets_scheme();
+    let mut audio_settings: Option<AudioSettings>=None;
+    let mut log_level_settings: Option<LogLevelSettings>=None;
 
     let mut currently_speaking_engine=0;
 
@@ -484,7 +488,13 @@ pub fn run(config: Config) {
     let default_language=config.engines[0].language.clone();
     thread::spawn(move || sd_input_processing_loop(sd_input_transmitter, &default_language));
 
+    let (fs_tx, fs_rx)=mpsc::channel();
+    let mut watcher: RecommendedWatcher=Watcher::new_immediate(move |res| fs_tx.send(res).unwrap()).unwrap();
+    watcher.configure(NotifyConfig::PreciseEvents(true)).unwrap();
+    watcher.watch(    std::env::var("HOME").unwrap()+"/.config/chinfusor", RecursiveMode::Recursive).unwrap_or_else(|_| ());
+
     loop {
+        //Catch input from Speech dispatcher
         let sd_input=if speaking {
             match sd_input_receiver.try_recv() {
                 Ok(result) => Some(result),
@@ -497,6 +507,59 @@ pub fn run(config: Config) {
                 }
             };
 
+        //If nothing is currently being spoken, check, if user didn't change configuration
+        if !speaking {
+            if let Ok(Ok(event))=fs_rx.try_recv() {
+                if event.paths.len()==1 {
+                    if let EventKind::Modify(_)=&event.kind {
+                        let path=event.paths[0].to_str().unwrap();
+
+                        if path.ends_with("alphabets_settings.csv") {
+                            //We need to load again the configuration, recreate list of engines, initialize, set audio, loglevel and properties for each of them.
+
+                            if let Some(audio_settings)=&audio_settings {
+                                config.load_alphabets_from_file(path);
+
+                                //First, deinitialize currently running engines;
+
+                                for engine in &mut engines {
+                                    engine.write_line("QUIT");
+                                    engine.wait_for_exit();
+                                    }
+
+                                //Then, start newones
+
+                                engines=Vec::new();
+                                for engine in &config.engines {
+                                    engines.push(Process::new(&engine.module, &engine.arg, engine.firejailed));
+                                    }
+
+                                alphabets_scheme=config.generate_alphabets_scheme();
+
+                                //Now, we need to initialize and configure each of them
+
+                                for (id, engine) in engines.iter_mut().enumerate() {
+                                    engine.write_line("INIT");
+
+                                    engine.write(&audio_settings.generate_sd_command());
+                                    engine.write(&SpeechSettings::generate_sd_command_from_engine_configuration(&config.engines[id]));
+
+                                    if let Some(log_level_settings)=&log_level_settings {
+                                        engine.write(&log_level_settings.generate_sd_command());
+                                        }
+                                    }
+
+                                }
+                            }
+                        else if path.ends_with("settings.conf") {
+                            config.load_configuration_from_file(path);
+                            }
+                        }
+                    }
+                }
+            }
+
+        //Check the input from speech-dispatcher
         if let Some(sd_command)=sd_input {
 
             match sd_command {
@@ -510,6 +573,8 @@ pub fn run(config: Config) {
                         engine.write(&settings.generate_sd_command());
                         engine.write(&SpeechSettings::generate_sd_command_from_engine_configuration(&config.engines[id]));
                         }
+
+                    audio_settings=Some(settings);
                     },
                 SdInputCommand::Set(_settings) => {
                     //currently_speaking_engine.write(&settings.generate_sd_command());
@@ -519,6 +584,8 @@ pub fn run(config: Config) {
                     for engine in engines.iter_mut() {
                         engine.write(&settings.generate_sd_command());
                         }
+
+                    log_level_settings=Some(settings);
                     },
                 SdInputCommand::Speak(text) => {
                     if !speaking {
@@ -650,6 +717,7 @@ pub fn run(config: Config) {
                 };
             }
 
+        //Check whether currently speaking module has finished and update things accordingly.
         if speaking {
             while let Some(line)=engines[currently_speaking_engine].read_line() {
                 //println!("{}", line);

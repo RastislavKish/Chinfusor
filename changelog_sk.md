@@ -2,7 +2,13 @@
 
 Toto je changelog zachytávajúci zmeny v Chinfusore a súvisiacich programoch.
 
-## 1.1
+## Chinfusor 1.2
+
+* Bolo pridané sledovanie konfiguračných súborov, ak existujú. Akékoľvek zmeny v konfigurácii sa premietnu okamžite, bez nutnosti reštartovať session.
+* Opravený bug v parsovaní ssml tagov, ktorý spôsoboval čítanie zahraničných textov oddelených medzerami po slovách.
+* Aktualizovaná dokumentácia.
+
+## Chinfusor 1.1
 
 * settings.csv sa ponovom volá alphabets_settings.csv, a namiesto konfigurácie abecied ich definuje. Formát je rovnaký ako v predchádzajúcej verzii, pridaný bol iba stĺpec unicode_ranges špecifikujúci rozsah danej abecedy viz. dokumentácia. Používateľ/ka môže definovať ľubovoľný počet abecied bez akýchkoľvek priamych či nepriamych limitácií.
 * Bol pridaný konfiguračný súbor settings.conf, ktorý obsahuje všeobecné nastavenia Chinfusoru.
@@ -13,6 +19,6 @@ Toto je changelog zachytávajúci zmeny v Chinfusore a súvisiacich programoch.
 * Opravené dva bugy týkajúce sa spracovávania KEY požiadaviek, ktoré spôsobovali mrznutie Chinfusoru. Ich existencia ma celkom prekvapila, nakoľko som mal za to, že Orca tieto requesty využíva, no to zjavne neplatí. V každom prípade boli chyby odstránené, funkcionalita stabilizovaná a je ponovom bezpečná na používanie.
 * Aktualizovaná dokumentácia, hlavne sekcia týkajúca sa konfigurácie, bola pridaná sekcia o aktualizácii Chinfusoru. Pár ďalších miest bolo upravených tak, aby odrážali aktuálny stav programu.
 
-## 1.0
+## Chinfusor 1.0
 
 Prvé vydanie.

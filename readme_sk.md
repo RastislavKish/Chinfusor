@@ -46,6 +46,8 @@ Poznámka 3, hoci parsovanie konfigurácie obsahuje základné kontroly správno
 
 súbor settings.conf má jednoduchú štruktúru, prvý na riadku je vždy kľúč, potom dvojbodka s medzerou a hodnota. Zatiaľ je podporované iba nastavenie punctuation_characters, ktoré špecifikuje, ktoré znaky majú byť pri parsovaní považované za interpunkciu. # na začiatku riadku opäť označuje komentár.
 
+Počnúc verziou 1.2, Chinfusor sleduje svoje konfiguračné súbory, ak existujú v dobe jeho vytvorenia. Akékoľvek zmeny v nich sa okamžite premietnu do behu programu, bez nutnosti reštartovať aktuálny session.
+
 ### Inštalácia
 
 Inštalácia Chinfusoru pozostáva z dvoch krokov, získania binárnej verzie a jej presunutia na správne miesto.
