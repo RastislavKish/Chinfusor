@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
+use clipboard::{ClipboardProvider, x11_clipboard::X11ClipboardContext};
 #[macro_use]
 extern crate lazy_static;
 use notify::Config as NotifyConfig;
@@ -21,6 +22,9 @@ lazy_static! {
     r"u((0x[\dabcdefABCDEF]+)|(\d+))-u((0x[\dabcdefABCDEF]+)|(\d+))" //Matches strings of style u0x12D-u123
     ).unwrap();
     static ref COLON_SEARCHING_REGEX: Regex=Regex::new(": ?").unwrap();
+    static ref TAGS_SEARCHING_REGEX: Regex=Regex::new(
+    r"<[^<]*>"
+    ).unwrap();
     }
 
 pub enum SdInputCommand {
@@ -465,6 +469,10 @@ impl SpeechEngineConfiguration {
         Ok(SpeechEngineConfiguration {name, unicode_ranges, module, arg, language, voice, punctuation_mode, pitch, capitals_pitch, rate, volume, firejailed})
         }
     }
+pub enum RecordingMode {
+    BackgroundRecording,
+    AcceleratedRecording,
+    }
 
 pub fn run(mut config: Config) {
     let mut engines=Vec::new();
@@ -484,14 +492,18 @@ pub fn run(mut config: Config) {
     let mut original_pitch=config.engines[0].pitch;
     let mut speaking=false;
     let (sd_input_transmitter, sd_input_receiver)=mpsc::channel::<SdInputCommand>();
+    let sd_input_transmitter_copy=sd_input_transmitter.clone();
 
     let default_language=config.engines[0].language.clone();
-    thread::spawn(move || sd_input_processing_loop(sd_input_transmitter, &default_language));
+    thread::spawn(move || sd_input_processing_loop(sd_input_transmitter_copy, &default_language));
 
     let (fs_tx, fs_rx)=mpsc::channel();
     let mut watcher: RecommendedWatcher=Watcher::new_immediate(move |res| fs_tx.send(res).unwrap()).unwrap();
     watcher.configure(NotifyConfig::PreciseEvents(true)).unwrap();
-    watcher.watch(    std::env::var("HOME").unwrap()+"/.config/chinfusor", RecursiveMode::Recursive).unwrap_or_else(|_| ());
+    watcher.watch(std::env::var("HOME").unwrap()+"/.config/chinfusor", RecursiveMode::Recursive).unwrap_or_else(|_| ());
+
+    let mut recorded_speech: Vec<String>=Vec::new();
+    let mut speech_recording_mode: Option<RecordingMode>=None;
 
     loop {
         //Catch input from Speech dispatcher
@@ -509,7 +521,7 @@ pub fn run(mut config: Config) {
 
         //If nothing is currently being spoken, check, if user didn't change configuration
         if !speaking {
-            if let Ok(Ok(event))=fs_rx.try_recv() {
+            while let Ok(Ok(event))=fs_rx.try_recv() {
                 if event.paths.len()==1 {
                     if let EventKind::Modify(_)=&event.kind {
                         let path=event.paths[0].to_str().unwrap();
@@ -554,6 +566,37 @@ pub fn run(mut config: Config) {
                         else if path.ends_with("settings.conf") {
                             config.load_configuration_from_file(path);
                             }
+                        else if path.ends_with("controller.dat") {
+                            if let Ok(controller_content)=fs::read_to_string(path) {
+                                match &controller_content.trim()[..] {
+                                    "StartBackgroundRecording" => {
+                                        if let None=speech_recording_mode {
+                                            speech_recording_mode=Some(RecordingMode::BackgroundRecording);
+                                            speak_message_internally(&mut engines[0], "Recording");
+                                            }
+                                        },
+                                    "StartAcceleratedRecording" => {
+                                        if let None=speech_recording_mode {
+                                            speech_recording_mode=Some(RecordingMode::AcceleratedRecording);
+                                            speak_message_internally(&mut engines[0], "Recording");
+                                            }
+                                        },
+                                    "StopRecording" => {
+                                        if let Some(_)=speech_recording_mode {
+                                            speech_recording_mode=None;
+
+                                            let text=recorded_speech.join(" ");
+                                            recorded_speech.clear();
+                                            let mut ctx: X11ClipboardContext= X11ClipboardContext::new().unwrap();
+                                            ctx.set_contents(text).unwrap();
+
+                                            speak_message_internally(&mut engines[0], "Copied");
+                                            }
+                                        },
+                                    _ => {},
+                                    };
+                                }
+                            }
                         }
                     }
                 }
@@ -590,6 +633,18 @@ pub fn run(mut config: Config) {
                 SdInputCommand::Speak(text) => {
                     if !speaking {
 
+                        if let Some(recording_mode)=&speech_recording_mode {
+                            let mut text=TAGS_SEARCHING_REGEX.replace_all(&text, "").to_string();
+                            text=text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'").replace("\n..\n", "\n.\n").trim().to_string();
+                            recorded_speech.push(text);
+
+                            if let RecordingMode::AcceleratedRecording=recording_mode {
+                                println!("701 BEGIN");
+                                println!("702 END");
+                                continue;
+                                }
+                            }
+
                         currently_spoken_text=text_processor::parse_text(&text.replace("<speak>", "").replace("</speak>", ""), &alphabets_scheme, &config.punctuation_characters, true);
 
                         if currently_spoken_text.len()>0 {
@@ -611,6 +666,19 @@ pub fn run(mut config: Config) {
                         }
                     },
                 SdInputCommand::Key(text) => {
+
+                    if let Some(recording_mode)=&speech_recording_mode {
+                        let mut text=TAGS_SEARCHING_REGEX.replace_all(&text, "").to_string();
+                        text=text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'").replace("\n..\n", "\n.\n").trim().to_string();
+                        recorded_speech.push(text);
+
+                        if let RecordingMode::AcceleratedRecording=recording_mode {
+                            println!("701 BEGIN");
+                            println!("702 END");
+                            continue;
+                            }
+                        }
+
                     currently_speaking_engine=0;
 
                     engines[currently_speaking_engine].write(&format!("KEY\n{}\n.\n", text));
@@ -621,6 +689,18 @@ pub fn run(mut config: Config) {
                     engines[currently_speaking_engine].activate_asynchronous_reading_until_sd_end_signal();
                     }
                 SdInputCommand::Char(ch) => {
+
+                    if let Some(recording_mode)=&speech_recording_mode {
+                        let text=ch.to_string();
+                        recorded_speech.push(text);
+
+                        if let RecordingMode::AcceleratedRecording=recording_mode {
+                            println!("701 BEGIN");
+                            println!("702 END");
+                            continue;
+                            }
+                        }
+
                     currently_speaking_engine=text_processor::identify_character(ch, &alphabets_scheme);
                     original_pitch=config.engines[currently_speaking_engine].pitch;
                     let capitalized_pitch=config.engines[currently_speaking_engine].capitals_pitch;
@@ -756,6 +836,21 @@ pub fn run(mut config: Config) {
         }
     }
 
+//This function is mentioned only to be used for speaking Chinfusor specific messages. Don't use it to speak anything that comes from outside.
+fn speak_message_internally(engine: &mut Process, message: &str) {
+    engine.write(&format!("SPEAK\n<speak>{}</speak>\n.\n", message));
+    engine.activate_asynchronous_reading_until_sd_end_signal();
+
+    let mut end_signal_detected=false;
+    while !end_signal_detected {
+        while let Some(line)=engine.read_line() {
+            if line=="702 END" {
+                end_signal_detected=true;
+                }
+            }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
 fn sd_input_processing_loop(tx: mpsc::Sender<SdInputCommand>, default_language: &str) {
     let stdin=std::io::stdin();
     loop {

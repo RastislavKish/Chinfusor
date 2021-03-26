@@ -1,4 +1,4 @@
-use sd_chinfusor::{Config, run};
+use sd_chinfusor_ext::{Config, run};
 
 fn main()
     {
