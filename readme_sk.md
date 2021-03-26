@@ -21,11 +21,12 @@ Aby ste mohli chinfusor bezproblémovo používať, treba vykonať niekoľko úk
 
 ### Konfigurácia
 
-I keď sa Chinfusor bude držať predvolených nastavení ak nenájde súbor s konfiguráciou, je dobré ho nastaviť už pri prvej inštalácii, aby bolo možné jednoducho vykonávať zmeny. Skopírujte súbor settings.csv do priečinka ~/.config/chinfusor, čo je konfiguračná lokalita Chinfusoru. Možno budete potrebovať povoliť zobrazovanie skrytých priečinkov a súborov vo Vašom správcovi súborov, nakoľko adresár .config je predvolene skrytý.
+I keď sa Chinfusor bude držať predvolených nastavení ak nenájde súbory s konfiguráciou, je dobré ho nastaviť už pri prvej inštalácii, aby bolo možné jednoducho vykonávať zmeny. Skopírujte súbory alphabets_settings.csv a settings.conf do priečinka ~/.config/chinfusor, čo je konfiguračná lokalita Chinfusoru. Možno budete potrebovať povoliť zobrazovanie skrytých priečinkov a súborov vo Vašom správcovi súborov, nakoľko adresár .config je predvolene skrytý.
 
-Súbor settings.csv je tzv. comma separated values konfigurácia, teda súbor s hodnotami oddelenými čiarkami. Jednotlivé nastavenia sa určujú v tomto poradí:
+Súbor settings.csv je tzv. comma separated values konfigurácia, teda súbor s hodnotami oddelenými čiarkami. Obsahuje definície jednotlivých abecied a ich nastavenia. Jednotlivé hodnoty sa určujú v tomto poradí:
 
-* Abeceda, abeceda, pre ktorú špecifikujete na danom riadku konfiguráciu, v súčasnosti sú podporované hodnoty latin, chinese a cyrillic.
+* Abeceda, abeceda, pre ktorú špecifikujete na danom riadku konfiguráciu. jej názov je čisto informatívny, Chinfusor s ním v zásade nijak nepracuje, preto si môžete zvoliť pomenovanie, aké sa Vám páči.
+* Unicode rozsahy, rozsahy unicode pre danú abecedu. Formát je u0xa-u0xb, kde a a b sú začiatočný a konečný index v unicode tabuľke. 0x označuje hexadecimálnu hodnotu, bez neho sa čísla berú za decimálne. Možno zadať viacero rozsahov pre jednu abecedu naraz jednoduchým opakovaním tohto vzoru, pričom je možné použiť ľubovoľný oddelovač príp. žiadny. Hviezda (*) alebo prázdne miesto značí, že sa jedná o latinskú abecedu. V celej konfigurácii by mala byť špecifikovaná presne jedna latinská abeceda, ak je ich viac, berie sa do úvahy len prvá, ak menej, použije sa predvolená konfigurácia. Rozsahy sa nesmú vzájomne prekrývať, ináč je správanie neurčené.
 * Modul, cesta k rečovému modulu, ktorý sa má pre danú abecedu použiť.
 * Argument, argument pre uvedený rečový modul, typicky absolútna cesta k jeho konfiguračnému súboru.
 * Jazyk, jazyk, ktorý sa má pre danú abecedu použiť, vo forme skratkového kódu napr. en, sk, ru atď.
@@ -39,9 +40,11 @@ Súbor settings.csv je tzv. comma separated values konfigurácia, teda súbor s 
 
 Poznámka, v prípade slovenských systémov môžete chcieť v pribalenej konfigurácii zmeniť jazyk latinského enginu z en na sk, aby Vám rozprával po Slovensky.
 
-Poznámka 2, každý riadok súboru sa vyhodnocuje iba vtedy, ak začína platným názvom niektorej z podporovaných abecied, rôzne komentáre ako napríklad prvý riadok s nápovedou tak nie sú problém.
+Poznámka 2, riadky začínajúce znakom # sa považujú za komentár.
 
 Poznámka 3, hoci parsovanie konfigurácie obsahuje základné kontroly správnosti zadaných údajov, nie sú v žiadnom prípade pripravené na všetky situácie, a napríklad validita cesty k modulu sa vôbec nekontroluje. Odporúčam preto skontrolovať dva krát, čo do konfigurácie zadávate.
+
+súbor settings.conf má jednoduchú štruktúru, prvý na riadku je vždy kľúč, potom dvojbodka s medzerou a hodnota. Zatiaľ je podporované iba nastavenie punctuation_characters, ktoré špecifikuje, ktoré znaky majú byť pri parsovaní považované za interpunkciu. # na začiatku riadku opäť označuje komentár.
 
 ### Inštalácia
 
@@ -51,20 +54,19 @@ Chinfusor má pribalenú svoju 64-bitovú verziu skompilovanú pre Ubuntu mate 2
 
 Môžete si skompilovať svoju vlastnú verziu z pribaleného zdrojového kódu, ak máte nainštalovaný Rust, postup je nasledovný:
 
-* Otvorte terminál, a navigujte do priečinka so zdrojovým kódom (src/chinfusor-rs).
+* Otvorte terminál, a navigujte do priečinka so zdrojovým kódom (src/sd_chinfusor).
 * cargo build \--release -q
-* Po kompilácii, ktorá by v ideálnom prípade nemala nič vypísať do konzoly, navigujte do priečinka target/release a zadajte príkaz chmod 755 chinfusor
-* Výsledný binárny súbor bude ďalej označovaný ako sd_chinfusor, nakoľko to je korektné meno pre speech-dispatcher, volá sa tak aj pribalená skompilovaná verzia.
+* Po kompilácii, ktorá by v ideálnom prípade nemala nič vypísať do konzoly, navigujte do priečinka target/release a zadajte príkaz chmod 755 sd_chinfusor
 
 Ak Rust nemáte, odporúčam prečítať si jeho [inštalačnú stránku,](https://www.rust-lang.org/tools/install) kde sa dozviete všetko potrebné.
 
 Keď máte binárnu verziu enginu, musíte ju dostať na miesto, kde sú uložené moduly speech-dispatchera. Na mojom stroji je to /usr/lib/speech-dispatcher-modules, no u Vás môže byť cesta iná, preto odporúčam si ju najprv skontrolovať, cieľový priečinok by mal už obsahovať spustiteľné súbory začínajúce sa na sd_, ako sd_espeak-ng, sd_espeak a pod.
 
-Keď ste si istý cestou, skopírujte Chinfusor na dané miesto ako root:
+Keď ste si istý cestou, skopírujte Chinfusor na dané miesto ako root. Aktivujte si správcovské práva sudo -i, navigujte do priečinka so spustiteľným súborom a zadajte príkaz:
 
-sudo -i\
 cp sd_chinfusor /usr/lib/speech-dispatcher-modules/sd_chinfusor\
-exit
+
+Nezabudnite sa z rootu odhlásiť príkazom exit.
 
 Následne sa odhláste a znova prihláste, aby ste začali nový session. Otvorte nastavenia Orci skratkou orca + medzerník a na karte hlas prezrite políčko Speech synthesizer. Ak medzi dostupnými možnosťami vidíte Chinfusor, tak gratulujem, práve ste nainštalovali rečový modul.
 
@@ -149,20 +151,26 @@ Po vytvorení profilu stačí už len v konfigurácii Chinfusoru zapnúť sandbo
 Poznámka: Ak už používate iné sandboxovacie technológie, odporúčam overiť si kompatibilitu s Firejailom, hlavne formát sandbox v sandboxe býva problematický.\
 Poznámka 2, Ak sandboxovanie nepotrebujete, Firejail mať nainštalovaný nemusíte. Používa sa iba vtedy, ak je tak špecifikované v konfigurácii.
 
+### Ako aktualizovať Chinfusor
+
+Keďže Chinfusor neobsahuje auto-aktualizačný mechanizmus, možno Vám napadla otázka, ako ho korektne aktualizovať, keď vyjde nová verzia. Osobne odporúčam nasledujúci postup:
+
+1. Stiahnite si najnovšiu verziu Chinfusoru z oficiálnej stránky.
+2. Ak je nová verzia len niekoľko čísiel popredu pred vašou aktuálnou, môžete si prečítať changelog a zistiť tak, čo sa líši a čo musíte urobiť, aby všetko správne fungovalo. Ak máte starú verziu programu a nechce sa Vám študovať všetky zmeny, odporúčam opätovne si prečítať sekciu inštalácie v dokumentácii, aby ste zistili, aký je aktuálny postup a ako sa líši od toho, čo ste zvykli robiť.
+3. Prepnite aktívny syntetizér v Orce z Chinfusoru na hocičo iné, napríklad espeak-ng.
+4. Nainštalujte Chinfusor.
+5. Po odhlásení sa a opätovnom prihlásení otestujte program pomocou aplikácie speech-dispatcher-cli, aby ste sa uistili, že všetko funguje.
+6. Prepnite váš aktívny rečový syntetizér v Orce opäť na Chinfusor.
+
 ## Interná štruktúra Chinfusoru
 
 Táto sekcia je určená hlavne vývojárom, ktorý by chceli či už upravovať alebo študovať kód chinfusoru. Ak do tejto skupiny nepatríte, kľudne prejdite na ďalšiu sekciu.
 
-Keďže môj kód ako zvyčajne neobsahuje ani riadok komentára, snáď s výnimkou starých častí kódu, ktoré sa mi nechcelo zmazať, chcem tu aspoň stručne popísať jeho fungovanie. Celý projekt sa skladá z dvoch crates, chinfusor a text_processor. Prvá sa stará o beh programu samotného, druhá obsahuje logiku pre parsovanie textu. Pre toto rozloženie som sa rozhodol pre prípad, že by v budúcnosti boli pridané komplikovanejšie algoritmy rozpoznávania abecied či celých jazykov.\
-O správu rečových modulov sa stará štruktúra Process, ktorá nesie stdin a asynchrónne vlákno číta výstup po riadkoch z stdout, pričom po prečítaní jedného pošle tento cez kanál do inštancie štruktúry, ktorá ho vytvorila. Navonok má programátor k dispozícii synchrónnu metódu write a asynchrónnu metódu read_line, ktorá vráti Option podľa toho, či je nový riadok k dispozícii alebo nie. To sa hodí najme v prípade, že treba súčasne čakať na správu z modulu o skončení syntézy a čítať príkazy speech dispatchera, keby prišiel pokyn na zastavenie.\
+Keďže môj kód ako zvyčajne neobsahuje ani riadok komentára, snáď s výnimkou starých častí kódu, ktoré sa mi nechcelo zmazať, chcem tu aspoň stručne popísať jeho fungovanie. Celý projekt sa skladá z dvoch modulov, chinfusor a text_processor. Prvá sa stará o beh programu samotného, druhá obsahuje logiku pre parsovanie textu.\
+O správu rečových modulov sa stará štruktúra Process, ktorá nesie stdin a asynchrónne vlákno číta výstup po riadkoch z stdout, pričom po prečítaní jedného pošle tento cez kanál do inštancie štruktúry, ktorá ho vytvorila. Aby nepotreboval každý proces vlastné vlákno a neplitvalo sa prostriedkami, všetko ide cez jednoduchý ThreadPool, ktorý je navrhnutý špeciálne za účelom parsovania výstupu z rečových modulov. Navonok má programátor k dispozícii synchrónnu metódu write a asynchrónnu metódu read_line, ktorá vráti Option podľa toho, či je nový riadok k dispozícii alebo nie. To sa hodí najme v prípade, že treba súčasne čakať na správu z modulu o skončení syntézy a čítať príkazy speech dispatchera, keby prišiel pokyn na zastavenie.\
+MiniThreadPool zabezpečuje, že ľubovoľný počet procesov bude potrebovať len jedno vlákno, no za cenu, že čítanie musí byť manuálne aktivované metódov activate_asynchronous_reading_until_sd_end_signal. Ako jej názov napovedá, táto metóda spustí čítanie, ktoré bude trvať až do zachytenia značky konca rozprávania.\
 Po spustení programu sa najprv načítajú moduly, potom sa spustí vlákno čítajúce vstup programu. Toto vlákno komunikuje so speech-dispatcherom a premieňa jeho príkazy na varianty enumerátora, ktoré následne posiela cez kanál späť do hlavného vlákna.\
 Tam medzi tým začne cyklus, ktorý zachytáva príkazy speech-dispatchera synchrónne alebo asynchrónne podľa toho, či sa práve hovorí alebo nie, a následne vstup matchuje, ak nejaký prišiel.
-
-Ak chcete pridať svoju vlastnú abecedu, musíte spraviť v zásade 3 veci:
-
-* Pridať konfiguráciu do štruktúry Config.
-* Pridať inštanciu modulu, ktorý bude za danú abecedu zodpovedný do poľa engines a spraviť mu premennú s jeho indexom.
-* Pridať varianty vašej abecedy do enumerátorov Alphabet a LanguageChunk. Oba sú v crate text_processor. Po ich aktualizovaní Vám Rust ukáže všetky miesta, kde ich treba implementovať. Stačí, ak sa budete držať implementácií ostatných abecied, v princípe sa tá Vaša s najväčšou pravdepodobnosťou nebude príliš líšiť.
 
 ## Licencia
 

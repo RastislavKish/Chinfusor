@@ -24,12 +24,13 @@ There are few steps required in order to make Chinfusor work correctly.
 
 ### Configuration
 
-Although Chinfusor will stay with its defaults when you don't provide a configuration file, you will most likely want to set it up, so you can make changes quickly if required. Create a directory named chinfusor in ~/.config, you may need to enable showing hidden folders in order to access the directory.
-Then, copy the settings.csv file, which is distributed along with the program, into your newly created chinfusor directory.
+Although Chinfusor will stay with its defaults when you don't provide any configuration file, you will most likely want to set it up, so you can make changes quickly if required. Create a directory named chinfusor in ~/.config, you may need to enable showing hidden folders in order to access the directory.
+Then, copy alphabets_settings.csv and settings.conf files, which are distributed along with the program, into your newly created chinfusor directory.
 
-Settings.csv is a comma separated values type configuration file. Each line goes as follows (values separated with commas, without spaces):
+alphabets_settings.csv is a comma separated values type configuration file. It configures properties such as used speech module, pitch or rate for any alphabet defined by range in unicode table. Each line goes as follows (values separated with commas, without spaces):
 
-* Alphabet, the alphabet, which is being configured, currently possible values are latin, chinese and cyrillic.
+* Alphabet, the alphabet, which is being configured. The name is purely informational and is not used by Chinfusor in any way, so you can select whatever title you like.
+* Unicode ranges, ranges in unicode table specifying this alphabet. The format is u0xa-u0xb, where a and b stand for hexadecimal values. Without 0x, the number behind u is considered decimal. More ranges can be specified for one alphabet as once, in format u0xa-u0xbu0xc-u0xd, but it is recommended to separate each range with a delimiter for readability i.e. u0xa-u0xb+u0xc-u0xd. You can use whatever delimiter you like. Star sign (*) in this field or nothing in this field is considered to denote a latin alphabet. There should be exactly one latin alphabet specified. If more are found, the firstone is considered relevant, if none is found, default configuration will be used for the latin alphabet. Also note, that unicode ranges specified in the whole configuration musn't overlap. If they do, the behavior will be undefined.
 * Module, the path to target speech module, should be absolute.
 * Arg, the argument to pass to desired module, usually an absolute path to module's configuration file.
 * Language, the language to be used for the selected alphabet, for example en, sk, ru etc.
@@ -41,9 +42,13 @@ Settings.csv is a comma separated values type configuration file. Each line goes
 * Volume, the volume to be used for the selected alphabet, values range from -100 to 100.
 * Firejailed, whether the speech module for the selected alphabet should be sandboxed, more in later section. Possible values are yes or true for enabling the feature, everything else is no.
 
-Every line in the configuration file is processed only if it starts with a valid alphabet name, so you can write any kind of comments if you like, such as the first line without breaking the configuration.
+A number sign (#) on start of a line denotes a comment, you can use it to comment your configuration.
 
 Also note, that while there are some validity checks for correctness of entered values, they're not in any means advanced. For example, module's path or arg path is not checked for validity, so if you enter wrong values there, you can effectively break the program. Be careful in what you're doing, speech is a crucial part of our work with computers, so you don't want it broken.
+
+settings.conf is a configuration file with simple structure, each line starts with a setting key, which is followed by colon, space and value. # on start of line again denotes comment.
+
+Currently, just one configuration is available in this file, punctuation_characters. It specifies the characters considered as punctuation while parsing text. \\n and \\r characters are added automatically by chinfusor, characters escaping is not supported.
 
 ### Installing Chinfusor
 
@@ -53,19 +58,18 @@ There is a precompiled 64-bit binary, packaged with the chinfusor distribution. 
 
 Thus, if you want to compile Chinfusor from source, in case you have Rust installed, all you need to do is:
 
-* Open a terminal, and navigate to the src/chinfusor-rs folder.
+* Open a terminal, and navigate to the src/sd_chinfusor folder.
 * cargo build \--release -q
-* After the compilation finishes, ideally with no output, navigate to the target/release directory and use chmod 755 chinfusor command.
-* Note, that this chinfusor binary will be later referred to as sd_chinfusor, as that is the correct speech dispatcher module name.
+* After the compilation finishes, ideally with no output, navigate to the target/release directory and use chmod 755 sd_chinfusor command.
 
 In case you don't have Rust installed, I recommend reading [Rust's installation page,](https://www.rust-lang.org/tools/install) which contains everything necessary to get you going.
 
 After you have optained your binary, you need to copy it to the folder, where speech-dispatcher stores its speech modules. On my computer, this is /usr/lib/speech-dispatcher-modules/, but it can be different on your machine, so make sure to check out, that you're copying into right location. The directory should contain executables starting with sd_, such as sd_espeak-ng, sd_espeak etc.
-When you're sure about the target location, open a terminal, navigate to the folder with your sd_chinfusor binary and enter these commands:
+When you're sure about the target location, open a terminal, activate root mode with sudo -i, navigate to the folder with your sd_chinfusor binary and enter command:
 
-sudo -i\
 cp sd_chinfusor /usr/lib/speech-dispatcher-modules/sd_chinfusor\
-exit
+
+Don't forget to log out from root mode by exit command.
 
 Now, log out and log in again in order for your changes to take effect. Open Orca's settings by pressing orca+space, navigate to the Speech or voice tab (I'm not sure about the exact English version, it's called Hlas on my machine) and check out the list of available synthetizers. If you see Chinfusor there, then congrats, you've set up your Chinfusor successfully!
 
@@ -150,21 +154,27 @@ sudo apt install firejail
 
 You don't need it in case you won't use sandboxing.
 
+### How to update Chinfusor
+
+Because Chinfusor doesn't contain a self-updating mechanism, you might wonder, how to update it properly, when a new version comes out. My recommendation on this topic is as follows:
+
+1. Download a new version of Chinfusor from its official page.
+2. If the new version is just few releases ahead of your currentone, I recommend checking changelog to see what changed and making the necessary changes. If you have a very old version and you don't want to read through the whole log, I recommend reading Installation section again, where you can see, what is different from what you used to do in setup.
+3. Switch your Orca synthesiser to anything else than Chinfusor, for example espeak-ng.
+4. Install Chinfusor according to installation instructions.
+5. After logging out and in, check your Chinfusor installation and configuration with speech-dispatcher-cli program.
+6. When you're sure that everything works, switch orca back to Chinfusor.
+
 ## Internal structure of Chinfusor
 
 This section is primarily aimed for developers, who might want to either play with or study Chinfusor's code. If you don't belong to this group, you can continue directly to the next section.
 
-Because my code as usual doesn't contain a single line of comment, may be except for unused code parts, which I was lazy to delete, I want to at least briefly describe here the internal structure of the program. Chinfusor consists of two crates, chinfusor and text_processor. The former is responsible for running the program, the latter contains logic for text parsing. I decided to have this in separate crate for case that more complex language detection mechanisms were used.
+Because my code as usual doesn't contain a single line of comment, may be except for unused code parts, which I was lazy to delete, I want to at least briefly describe here the internal structure of the program. Chinfusor consists of two modules, chinfusor and text_processor. The former is responsible for running the program, the latter contains logic for text parsing.
 
-After program's start, speech modules are loaded, handling of subprocess is done by Process structure. This structure contains stdin and a channel to thread asynchronously parsing stdout, sending lines as Strings to the receiver owned by instance of the Process structure. This approach was necessary, as it is not possible to determine, whether a pipe has new content without blocking the current thread. From outside, the Process structure provides synchronous method for writing to stdin and asynchronous method for reading lines from stdout, what is handy when waiting for particular engine to finish speaking and expecting stop requests at the same time.\
+After program's start, speech modules are loaded, handling of subprocess is done by Process structure. This structure contains stdin and a channel to thread asynchronously parsing stdout, sending lines as Strings to the receiver owned by instance of the Process structure. This approach was necessary, as it is not possible to determine, whether a pipe has new content without blocking the current thread. To prevent growing number of threads as more alphabets are added, a very simple ThreadPool is used. I have designed it specially for parsing output of speech modules and searching ending marks, but it could be in theory reused after modifying its Request enum. From outside, the Process structure provides synchronous method for writing to stdin and asynchronous method for reading lines from stdout, what is handy when waiting for particular engine to finish speaking and expecting stop requests at the same time.\
+MiniThreadPool guarantees, that for whatever number of processes just one thread is used, but for a drawback, that reading from stdout of particular proces must be always activated manually with activate_async_reading_until_sd_end_signal method, which as name suggests, starts reading, which will progress untill an end mark is found.\ 
 After speech modules are loaded, a new thread is started for parsing Chinfusor's stdin. This thread reads the standard input for speech-dispatcher's commands and processes them in appropriate way i.e. reads content and returns confirmations about receiving. When speech-dispatcher command is processed, it's turned into enum form and sent through channel to the main thread, which processes it further as necessary.\
 back in the main thread, after starting the reading thread, a loop is started, which reads speech-dispatcher input channel either synchronously or asynchronously, depends on whether a speech is in progress.
-
-If you want to add your own alphabet to be processed, you basically need to do three things:
-
-* Add configuration for your alphabet to config structure.
-* Add a Process instance to engines array and create a variable with its index.
-* Add variants for your alphabet to LanguageChunk and Alphabet enums. After compiling, Rust will show you all places you need to change in order to implement it. Just follow the implementation of other alphabets, your most likely won't differ much.
 
 ## License
 
