@@ -4,13 +4,12 @@ use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
-#[macro_use]
-extern crate lazy_static;
-use notify::Config as NotifyConfig;
-use notify::{event::EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use lazy_static::lazy_static;
+use notify::{event::EventKind, RecursiveMode, Watcher};
 use regex::Regex;
 use subprocess::{Exec, Popen, Redirection};
 use text_processor::LanguageChunk;
@@ -489,9 +488,9 @@ pub fn run(mut config: Config) {
     thread::spawn(move || sd_input_processing_loop(sd_input_transmitter, &default_language));
 
     let (fs_tx, fs_rx)=mpsc::channel();
-    let mut watcher: RecommendedWatcher=Watcher::new_immediate(move |res| fs_tx.send(res).unwrap()).unwrap();
-    watcher.configure(NotifyConfig::PreciseEvents(true)).unwrap();
-    watcher.watch(    std::env::var("HOME").unwrap()+"/.config/chinfusor", RecursiveMode::Recursive).unwrap_or_else(|_| ());
+    let mut watcher=notify::recommended_watcher(move |res| fs_tx.send(res).unwrap()).unwrap();
+    let chinfusor_config_dir=std::env::var("HOME").unwrap()+"/.config/chinfusor";
+    watcher.watch(Path::new(&chinfusor_config_dir), RecursiveMode::Recursive).unwrap_or_else(|_| ());
 
     loop {
         //Catch input from Speech dispatcher
@@ -509,7 +508,7 @@ pub fn run(mut config: Config) {
 
         //If nothing is currently being spoken, check, if user didn't change configuration
         if !speaking {
-            if let Ok(Ok(event))=fs_rx.try_recv() {
+            while let Ok(Ok(event))=fs_rx.try_recv() {
                 if event.paths.len()==1 {
                     if let EventKind::Modify(_)=&event.kind {
                         let path=event.paths[0].to_str().unwrap();

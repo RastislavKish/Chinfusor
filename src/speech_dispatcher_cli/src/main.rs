@@ -1,7 +1,7 @@
 use speech_dispatcher::{Connection, Priority};
 
 fn main() {
-    let connection=Connection::open("speech_dispatcher_cli", "speech_dispatcher_cli_connection", "", speech_dispatcher::Mode::Single);
+    let connection=Connection::open("speech_dispatcher_cli", "speech_dispatcher_cli_connection", "", speech_dispatcher::Mode::Threaded).unwrap();
 
     loop {
         let mut input=String::new();
@@ -21,14 +21,14 @@ fn main() {
 
             match &parts[0][..] {
                 "module" => {
-                    connection.set_output_module(parts[1].clone());
+                    connection.set_output_module(parts[1].clone()).unwrap();
                     },
                 "language" => {
-                    connection.set_language(&parts[1]);
+                    connection.set_language(&parts[1]).unwrap();
                     },
                 "pitch" => {
                     if let Ok(n)=parts[1].parse::<i32>() {
-                        connection.set_voice_pitch(n);
+                        connection.set_voice_pitch(n).unwrap();
                         }
                     else {
                         println!("Invalid inpuut");
@@ -36,7 +36,7 @@ fn main() {
                     },
                 "rate" => {
                     if let Ok(n)=parts[1].parse::<i32>() {
-                        connection.set_voice_rate(n);
+                        connection.set_voice_rate(n).unwrap();
                         }
                     else {
                         println!("Invalid inpuut");
@@ -44,17 +44,17 @@ fn main() {
                     },
                 "volume" => {
                     if let Ok(n)=parts[1].parse::<i32>() {
-                        connection.set_volume(n);
+                        connection.set_volume(n).unwrap();
                         }
                     else {
                         println!("Invalid inpuut");
                         }
                     },
                 "pause" => {
-                    connection.pause();
+                    connection.pause().unwrap();
                     },
                 "resume" => {
-                    connection.resume();
+                    connection.resume().unwrap();
                     },
                 _ => {
                     println!("Unknown command");
