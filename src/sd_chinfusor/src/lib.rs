@@ -82,8 +82,12 @@ impl LogLevelSettings {
         format!("LOGLEVEL\n{}\n.\n", self.lines.join("\n"))
         }
     }
+pub enum StdoutOutput {
+    Line(String),
+    Data(Vec<u8>),
+    }
 pub enum MiniThreadPoolRequest {
-    ReadUntilSdEndSignal(Arc<Mutex<File>>, mpsc::Sender<String>),
+    ReadUntilSdEndSignal(Arc<Mutex<File>>, mpsc::Sender<StdoutOutput>),
     }
 pub struct MiniThreadPool {
     requests_transmitter: Mutex<mpsc::Sender<MiniThreadPoolRequest>>,
@@ -114,6 +118,9 @@ impl MiniThreadPool {
                     let mut stdout=stdout.lock().unwrap();
                     let mut end_signal_detected=false;
 
+                    let mut audio_bits=0;
+                    let mut audio_num_samples=0;
+
                     while !end_signal_detected {
                         if let Ok(n)=stdout.read(&mut small_stdout_reading_buffer) {
                             if n==0 {
@@ -124,15 +131,56 @@ impl MiniThreadPool {
                             break;
                             }
 
+                        if small_stdout_reading_buffer[0]==0 && stdout_reading_buffer.len()==9 { //The length of "705-AUDIO"
+                            if let Ok(line)=String::from_utf8(stdout_reading_buffer.clone()) {
+                                if line=="705-AUDIO" {
+                                    stdout_reading_buffer.push(0);
+
+                                    let mut audio=Self::read_out_audio_chunk(&mut stdout, (audio_bits/8)*audio_num_samples);
+
+                                    //We need to send both what we already received (705-AUDIO^@), as well as the data itself. To avoid unnecessary allocations and copying, we can send two eparate messages.
+
+                                    stdout_reading_buffer.append(&mut audio);
+                                    stdout_transmitter.send(StdoutOutput::Data(stdout_reading_buffer.clone())).unwrap();
+
+                                    /*
+                                    stdout_transmitter.send(StdoutOutput::Data(stdout_reading_buffer.clone())).unwrap();
+                                    stdout_transmitter.send(StdoutOutput::Data(audio)).unwrap();
+                                    */
+                                    stdout_reading_buffer.clear();
+                                    continue;
+                                    }
+                                }
+                            }
+
                         if small_stdout_reading_buffer[0]!='\n' as u8 {
                             stdout_reading_buffer.push(small_stdout_reading_buffer[0]);
                             }
                         else {
                             let line=String::from_utf8(stdout_reading_buffer.clone()).unwrap();
 
+                            //Catch audio output parameters if they appear
+
+                            if line.starts_with("705") {
+                                let line_parts: Vec<&str>=line.split("=").collect();
+
+                                if line_parts.len()==2 {
+                                    match line_parts[0] {
+                                        "705-bits" => {
+                                            audio_bits=line_parts[1].parse().unwrap();
+                                            },
+                                        "705-num_samples" => {
+                                            audio_num_samples=line_parts[1].parse().unwrap();
+                                            },
+                                        _ => {},
+                                        }
+                                    }
+
+                                }
+
                             end_signal_detected=line=="702 END" || line=="703 STOP" || line=="704 PAUSE";
 
-                            stdout_transmitter.send(line).unwrap();
+                            stdout_transmitter.send(StdoutOutput::Line(line)).unwrap();
 
                             stdout_reading_buffer.clear();
                             }
@@ -141,13 +189,56 @@ impl MiniThreadPool {
                 };
             }
         }
+
+    fn read_out_audio_chunk(stdout: &mut File, estimated_length: usize) -> Vec<u8> {
+        let mut buffer: Vec<u8>=vec![0;estimated_length];
+        let mut caret: Vec<u8>=vec![0;1];
+
+        stdout.read(&mut buffer).unwrap();
+
+        lazy_static! {
+            static ref AUDIO_TAG: [u8;10]=*b"705 AUDIO\n";
+            }
+
+        while let Ok(n)=stdout.read(&mut caret) {
+            if n==0 {
+                return buffer;
+                }
+
+            buffer.push(caret[0]);
+
+            if caret[0]=='\n' as u8 {
+                // check, if the buffer ends with "705 AUDIO\n". If it does, we can return.
+
+                if buffer.len()<AUDIO_TAG.len() {
+                    continue;
+                    }
+
+                let mut tag_found=true;
+
+                for (index, byte) in (&buffer[buffer.len()-AUDIO_TAG.len()..]).iter().enumerate() {
+                    if AUDIO_TAG[index]!=*byte {
+                        tag_found=false;
+                        break;
+                        }
+                    }
+
+                if tag_found {
+                    return buffer;
+                    }
+                }
+            }
+
+        buffer
+        }
+
     }
 pub struct Process {
     process: Popen,
     stdin: File,
     stdout: Arc<Mutex<File>>,
-    stdout_transmitter: mpsc::Sender<String>,
-    stdout_receiver: mpsc::Receiver<String>,
+    stdout_transmitter: mpsc::Sender<StdoutOutput>,
+    stdout_receiver: mpsc::Receiver<StdoutOutput>,
     mini_thread_pool_requests_transmitter: mpsc::Sender<MiniThreadPoolRequest>,
     }
 impl Process {
@@ -169,14 +260,14 @@ impl Process {
             panic!("Unable to take stdout of {}.", file_path);
             };
 
-        let (stdout_transmitter, stdout_receiver)=mpsc::channel::<String>();
+        let (stdout_transmitter, stdout_receiver)=mpsc::channel::<StdoutOutput>();
 
         let mini_thread_pool_requests_transmitter=MINI_THREAD_POOL.get_requests_transmitter();
 
         Process {process, stdin, stdout, stdout_transmitter, stdout_receiver, mini_thread_pool_requests_transmitter}
         }
 
-    pub fn read_line(&mut self) -> Option<String> {
+    pub fn read(&mut self) -> Option<StdoutOutput> {
         if let Ok(line)=self.stdout_receiver.try_recv() {
             return Some(line);
             }
@@ -640,7 +731,17 @@ pub fn run(mut config: Config) {
                     if speaking {
                         engines[currently_speaking_engine].write_line("PAUSE");
                         loop {
-                            while let Some(line)=engines[currently_speaking_engine].read_line() {
+                            while let Some(output)=engines[currently_speaking_engine].read() {
+                                let line=match output {
+                                    StdoutOutput::Line(line) => line,
+                                    StdoutOutput::Data(data) => {
+                                        let mut stdout=std::io::stdout().lock();
+                                        stdout.write_all(&data).unwrap();
+                                        continue;
+                                        }
+                                    };
+
+
 
                                 if line=="704 PAUSE" {
                                     speaking=false;
@@ -652,7 +753,7 @@ pub fn run(mut config: Config) {
                                     println!("702 END");
                                     break;
                                     }
-                                else if line.starts_with("700") {
+                                else if line.starts_with("700") || line.starts_with("705") || line.starts_with("706") {
                                     println!("{}", line);
                                     }
                                 }
@@ -674,7 +775,15 @@ pub fn run(mut config: Config) {
                     if speaking {
                         engines[currently_speaking_engine].write_line("STOP");
                         loop {
-                            while let Some(line)=engines[currently_speaking_engine].read_line() {
+                            while let Some(output)=engines[currently_speaking_engine].read() {
+                                let line=match output {
+                                    StdoutOutput::Line(line) => line,
+                                    StdoutOutput::Data(data) => {
+                                        let mut stdout=std::io::stdout().lock();
+                                        stdout.write_all(&data).unwrap();
+                                        continue;
+                                        },
+                                    };
 
                                 if line=="703 STOP" {
                                     speaking=false;
@@ -686,7 +795,7 @@ pub fn run(mut config: Config) {
                                     println!("702 END");
                                     break;
                                     }
-                                else if line.starts_with("700") {
+                                else if line.starts_with("700") || line.starts_with("705") || line.starts_with("706") {
                                     println!("{}", line);
                                     }
                                 }
@@ -718,9 +827,18 @@ pub fn run(mut config: Config) {
 
         //Check whether currently speaking module has finished and update things accordingly.
         if speaking {
-            while let Some(line)=engines[currently_speaking_engine].read_line() {
+            while let Some(output)=engines[currently_speaking_engine].read() {
+                let line=match output {
+                    StdoutOutput::Line(line) => line,
+                    StdoutOutput::Data(data) => {
+                        let mut stdout=std::io::stdout().lock();
+                        stdout.write_all(&data).unwrap();
+                        continue;
+                        },
+                    };
+
                 //println!("{}", line);
-                if line.starts_with("700") {
+                if line.starts_with("700") || line.starts_with("705") || line.starts_with("706") {
                     println!("{}", line);
                     }
                 else if line=="702 END".to_string() {
