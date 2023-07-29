@@ -3,7 +3,7 @@ pub mod text_processor;
 use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufWriter, BufReader, BufRead, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
@@ -20,6 +20,37 @@ lazy_static! {
     r"u((0x[\dabcdefABCDEF]+)|(\d+))-u((0x[\dabcdefABCDEF]+)|(\d+))" //Matches strings of style u0x12D-u123
     ).unwrap();
     static ref COLON_SEARCHING_REGEX: Regex=Regex::new(": ?").unwrap();
+    }
+
+pub struct Logger {
+    writer: BufWriter<File>,
+    }
+impl Logger {
+
+    pub fn new(path: &str) -> Logger {
+        let file=File::create(path).unwrap();
+        let writer=BufWriter::new(file);
+
+        Logger { writer }
+        }
+
+    fn write(&mut self, message: &str) {
+        writeln!(self.writer, "{}", message).unwrap();
+        self.writer.flush().unwrap();
+        }
+
+    pub fn log(message: &str) {
+        lazy_static! {
+            static ref LOGGER: Mutex<Logger>={
+                let log_file_path=std::env::var("HOME").unwrap()+"/.config/chinfusor/log.log";
+                Mutex::new(Logger::new(&log_file_path))
+                };
+            }
+
+        let mut logger=LOGGER.lock().unwrap();
+        logger.write(message);
+        }
+
     }
 
 pub enum SdInputCommand {
@@ -87,7 +118,7 @@ pub enum StdoutOutput {
     Data(Vec<u8>),
     }
 pub enum MiniThreadPoolRequest {
-    ReadUntilSdEndSignal(Arc<Mutex<File>>, mpsc::Sender<StdoutOutput>),
+    ReadUntilSdEndSignal(Arc<Mutex<BufReader<File>>>, mpsc::Sender<StdoutOutput>),
     }
 pub struct MiniThreadPool {
     requests_transmitter: Mutex<mpsc::Sender<MiniThreadPoolRequest>>,
@@ -108,10 +139,6 @@ impl MiniThreadPool {
         }
 
     fn mini_thread_pool_loop(requests_receiver: mpsc::Receiver<MiniThreadPoolRequest>) {
-
-        let mut stdout_reading_buffer: Vec<u8>=Vec::with_capacity(1000);
-        let mut small_stdout_reading_buffer: Vec<u8>=vec![0;1];
-
         while let Ok(request)=requests_receiver.recv() {
             match request {
                 MiniThreadPoolRequest::ReadUntilSdEndSignal(stdout, stdout_transmitter) => {
@@ -122,42 +149,13 @@ impl MiniThreadPool {
                     let mut audio_num_samples=0;
 
                     while !end_signal_detected {
-                        if let Ok(n)=stdout.read(&mut small_stdout_reading_buffer) {
+                        let mut line=String::new();
+                        if let Ok(n)=stdout.read_line(&mut line) {
                             if n==0 {
                                 break;
                                 }
-                            }
-                        else {
-                            break;
-                            }
 
-                        if small_stdout_reading_buffer[0]==0 && stdout_reading_buffer.len()==9 { //The length of "705-AUDIO"
-                            if let Ok(line)=String::from_utf8(stdout_reading_buffer.clone()) {
-                                if line=="705-AUDIO" {
-                                    stdout_reading_buffer.push(0);
-
-                                    let mut audio=Self::read_out_audio_chunk(&mut stdout, (audio_bits/8)*audio_num_samples);
-
-                                    //We need to send both what we already received (705-AUDIO^@), as well as the data itself. To avoid unnecessary allocations and copying, we can send two eparate messages.
-
-                                    stdout_reading_buffer.append(&mut audio);
-                                    stdout_transmitter.send(StdoutOutput::Data(stdout_reading_buffer.clone())).unwrap();
-
-                                    /*
-                                    stdout_transmitter.send(StdoutOutput::Data(stdout_reading_buffer.clone())).unwrap();
-                                    stdout_transmitter.send(StdoutOutput::Data(audio)).unwrap();
-                                    */
-                                    stdout_reading_buffer.clear();
-                                    continue;
-                                    }
-                                }
-                            }
-
-                        if small_stdout_reading_buffer[0]!='\n' as u8 {
-                            stdout_reading_buffer.push(small_stdout_reading_buffer[0]);
-                            }
-                        else {
-                            let line=String::from_utf8(stdout_reading_buffer.clone()).unwrap();
+                            let line=line.trim().to_string();
 
                             //Catch audio output parameters if they appear
 
@@ -172,6 +170,12 @@ impl MiniThreadPool {
                                         "705-num_samples" => {
                                             audio_num_samples=line_parts[1].parse().unwrap();
                                             },
+                                        "705-big_endian" => {
+                                            stdout_transmitter.send(StdoutOutput::Line(line)).unwrap();
+                                            let audio=Self::read_out_audio_chunk(&mut stdout, (audio_bits/8)*audio_num_samples);
+                                            stdout_transmitter.send(StdoutOutput::Data(audio)).unwrap();
+                                            continue;
+                                            },
                                         _ => {},
                                         }
                                     }
@@ -181,8 +185,9 @@ impl MiniThreadPool {
                             end_signal_detected=line=="702 END" || line=="703 STOP" || line=="704 PAUSE";
 
                             stdout_transmitter.send(StdoutOutput::Line(line)).unwrap();
-
-                            stdout_reading_buffer.clear();
+                            }
+                        else {
+                            break;
                             }
                         }
                     },
@@ -190,42 +195,35 @@ impl MiniThreadPool {
             }
         }
 
-    fn read_out_audio_chunk(stdout: &mut File, estimated_length: usize) -> Vec<u8> {
-        let mut buffer: Vec<u8>=vec![0;estimated_length];
-        let mut caret: Vec<u8>=vec![0;1];
-
-        stdout.read(&mut buffer).unwrap();
+    fn read_out_audio_chunk(stdout: &mut BufReader<File>, estimated_length: usize) -> Vec<u8> {
+        let mut buffer: Vec<u8>=Vec::with_capacity(estimated_length);
 
         lazy_static! {
             static ref AUDIO_TAG: [u8;10]=*b"705 AUDIO\n";
             }
 
-        while let Ok(n)=stdout.read(&mut caret) {
+        while let Ok(n)=stdout.read_until('\n' as u8, &mut buffer) {
             if n==0 {
                 return buffer;
                 }
 
-            buffer.push(caret[0]);
+            // check, if the buffer ends with "705 AUDIO\n". If it does, we can return.
 
-            if caret[0]=='\n' as u8 {
-                // check, if the buffer ends with "705 AUDIO\n". If it does, we can return.
+            if buffer.len()<AUDIO_TAG.len() {
+                continue;
+                }
 
-                if buffer.len()<AUDIO_TAG.len() {
-                    continue;
+            let mut tag_found=true;
+
+            for (index, byte) in (&buffer[buffer.len()-AUDIO_TAG.len()..]).iter().enumerate() {
+                if AUDIO_TAG[index]!=*byte {
+                    tag_found=false;
+                    break;
                     }
+                }
 
-                let mut tag_found=true;
-
-                for (index, byte) in (&buffer[buffer.len()-AUDIO_TAG.len()..]).iter().enumerate() {
-                    if AUDIO_TAG[index]!=*byte {
-                        tag_found=false;
-                        break;
-                        }
-                    }
-
-                if tag_found {
-                    return buffer;
-                    }
+            if tag_found {
+                return buffer;
                 }
             }
 
@@ -236,7 +234,7 @@ impl MiniThreadPool {
 pub struct Process {
     process: Popen,
     stdin: File,
-    stdout: Arc<Mutex<File>>,
+    stdout: Arc<Mutex<BufReader<File>>>,
     stdout_transmitter: mpsc::Sender<StdoutOutput>,
     stdout_receiver: mpsc::Receiver<StdoutOutput>,
     mini_thread_pool_requests_transmitter: mpsc::Sender<MiniThreadPoolRequest>,
@@ -255,7 +253,7 @@ impl Process {
             panic!("Unable to take stdin of {}.", file_path);
             };
         let stdout=if let Some(f)=&process.stdout {
-            Arc::new(Mutex::new((*f).try_clone().unwrap()))
+            Arc::new(Mutex::new(BufReader::new((*f).try_clone().unwrap())))
             } else {
             panic!("Unable to take stdout of {}.", file_path);
             };
